@@ -26,7 +26,12 @@ export function EmptyState() {
             title="Open Help & Tech Guide"
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => e.key === "Enter" && openHelp()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openHelp();
+              }
+            }}
             aria-label="Open Help & Tech Guide"
           >
             <Image

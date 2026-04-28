@@ -226,8 +226,11 @@ const shortcuts: Array<{ label: string; keys: string[] }> = [
   { label: "Toggle activity drawer", keys: ["Ctrl", "\\"] },
   { label: "Toggle dark mode", keys: ["Ctrl", "D"] },
   { label: "Open shortcuts", keys: ["?"] },
-  { label: "Help & tech guide", keys: ["? button in toolbar"] },
   { label: "Close overlay", keys: ["Esc"] },
+];
+
+const toolbarActions: Array<{ label: string; description: string }> = [
+  { label: "Help & tech guide", description: "? button in top bar" },
 ];
 
 export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
@@ -260,6 +263,15 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
                   <span className="kbd">{k}</span>
                 </React.Fragment>
               ))}
+            </span>
+          </div>
+        ))}
+        <h2 className="shortcuts-section-heading">Toolbar actions</h2>
+        {toolbarActions.map((a) => (
+          <div key={a.label} className="shortcut-row">
+            <span className="label">{a.label}</span>
+            <span className="keys">
+              <span className="kbd">{a.description}</span>
             </span>
           </div>
         ))}

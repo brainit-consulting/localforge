@@ -147,30 +147,32 @@ type Pos  = { x: number; y: number };
 type Size = { w: number; h: number };
 
 export function HelpModal({ open, onClose }: HelpModalProps) {
-  const [tab,  setTab]  = useState<Tab>("quickstart");
-  const [pos,  setPos]  = useState<Pos | null>(null);
-  const [size, setSize] = useState<Size | null>(null);
+  if (!open) return null;
+  return <HelpModalContent onClose={onClose} />;
+}
 
-  const panelRef      = useRef<HTMLDivElement>(null);
-  const dragStart     = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
-  const resizeStart   = useRef<{ mx: number; my: number; w: number; h: number  } | null>(null);
+function HelpModalContent({ onClose }: { onClose: () => void }) {
+  const [tab,     setTab]     = useState<Tab>("quickstart");
+  const [pos,     setPos]     = useState<Pos | null>(null);
+  const [size,    setSize]    = useState<Size | null>(null);
+  const [visible, setVisible] = useState(false);
 
-  // Reset state each time modal opens
+  const panelRef    = useRef<HTMLDivElement>(null);
+  const dragStart   = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
+  const resizeStart = useRef<{ mx: number; my: number; w: number; h: number  } | null>(null);
+
+  // Fade in on mount via rAF so the CSS transition fires
   useEffect(() => {
-    if (open) {
-      setTab("quickstart");
-      setPos(null);
-      setSize(null);
-    }
-  }, [open]);
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   // Escape to close
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [onClose]);
 
   // Global mouse move / up for drag and resize
   useEffect(() => {
@@ -191,7 +193,7 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
     }
     function onUp() {
       if (dragStart.current || resizeStart.current) {
-        document.body.style.cursor = "";
+        document.body.style.cursor     = "";
         document.body.style.userSelect = "";
       }
       dragStart.current   = null;
@@ -206,6 +208,8 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
   }, []);
 
   const startDrag = useCallback((e: React.MouseEvent) => {
+    const el = e.target as HTMLElement;
+    if (el.closest("button, a, input, textarea, select")) return;
     if (!panelRef.current) return;
     const rect = panelRef.current.getBoundingClientRect();
     dragStart.current = {
@@ -214,7 +218,6 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
       px: pos?.x ?? rect.left,
       py: pos?.y ?? rect.top,
     };
-    // Lock panel to its current screen position before moving
     if (pos === null) setPos({ x: rect.left, y: rect.top });
     document.body.style.cursor     = "grabbing";
     document.body.style.userSelect = "none";
@@ -236,20 +239,22 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
     e.stopPropagation();
   }, []);
 
-  const panelStyle: React.CSSProperties = {
-    ...(pos  ? { position: "fixed", left: pos.x, top: pos.y, transform: "none", margin: 0 } : {}),
-    ...(size ? { width: size.w, height: size.h } : {}),
-  };
+  const panelVars = {
+    ...(pos  ? { "--panel-left": `${pos.x}px`, "--panel-top": `${pos.y}px` } : {}),
+    ...(size ? { "--panel-width": `${size.w}px`, "--panel-height": `${size.h}px` } : {}),
+  } as React.CSSProperties;
 
   return (
     <div
-      className={"help-overlay " + (open ? "open" : "")}
+      className={"help-overlay " + (visible ? "open" : "")}
       onClick={onClose}
     >
       <div
         ref={panelRef}
         className="help-panel"
-        style={panelStyle}
+        style={panelVars}
+        data-dragged={pos !== null ? "true" : undefined}
+        data-resized={size !== null ? "true" : undefined}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -289,7 +294,7 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
           <button
             type="button"
             role="tab"
-            aria-selected={tab === "quickstart" ? "true" : "false"}
+            aria-selected={tab === "quickstart"}
             className={"help-tab " + (tab === "quickstart" ? "active" : "")}
             onClick={() => setTab("quickstart")}
           >
@@ -298,7 +303,7 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
           <button
             type="button"
             role="tab"
-            aria-selected={tab === "techguide" ? "true" : "false"}
+            aria-selected={tab === "techguide"}
             className={"help-tab " + (tab === "techguide" ? "active" : "")}
             onClick={() => setTab("techguide")}
           >
