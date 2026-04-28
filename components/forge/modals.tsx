@@ -226,6 +226,7 @@ const shortcuts: Array<{ label: string; keys: string[] }> = [
   { label: "Toggle activity drawer", keys: ["Ctrl", "\\"] },
   { label: "Toggle dark mode", keys: ["Ctrl", "D"] },
   { label: "Open shortcuts", keys: ["?"] },
+  { label: "Help & tech guide", keys: ["? button in toolbar"] },
   { label: "Close overlay", keys: ["Esc"] },
 ];
 
