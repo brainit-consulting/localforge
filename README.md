@@ -1,5 +1,7 @@
 # LocalForge
 
+![LocalForge](public/LocalForgeLogo.png)
+
 > Build apps on autopilot with local AI models. No cloud, no API keys, no per-token billing.
 
 ## Quick Start
@@ -17,7 +19,7 @@
 ### 3. Install and run LocalForge
 
 ```bash
-git clone https://github.com/leonvanzyl/localforge.git
+git clone https://github.com/brainit-consulting/localforge.git
 cd localforge
 npm install
 npm run db:migrate
@@ -97,3 +99,7 @@ Override per project via project settings, or globally via **Settings** in the s
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
+
+## Credits
+
+Forked from [leonvanzyl/localforge](https://github.com/leonvanzyl/localforge).
