@@ -216,8 +216,19 @@ export function BootstrapperPanel({
       const data = (await res.json().catch(() => ({}))) as {
         count?: number;
         error?: string;
+        kind?: "confabulation" | "no-features";
+        toolCalls?: number;
+        turns?: number;
+        summary?: string;
+        model?: string;
+        provider?: string;
       };
       if (!res.ok) {
+        // For the confabulation failure mode the server's error string is
+        // already long-form and names the model + suggests alternatives.
+        // For the legacy "no-features" mode the string is shorter.
+        // Either way, prefer the structured message over the generic
+        // `Request failed (NNN)` so the user sees actionable guidance.
         throw new Error(data.error || `Request failed (${res.status})`);
       }
       setGenResult(

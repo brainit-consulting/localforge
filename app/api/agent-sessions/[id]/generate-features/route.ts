@@ -188,13 +188,34 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const createdCount = features.length - existingBefore;
 
   if (createdCount <= 0) {
+    // Two distinct failure shapes share the "0 features created" outcome
+    // and the user needs different guidance for each:
+    //
+    //   (a) Confabulation — the agent produced assistant text but invoked
+    //       zero structured tool calls. This is the SAME signature as the
+    //       orchestrator confabulation we tracked in ENH-001: the model
+    //       emits JSON-shaped tool calls inline as text and Ollama's
+    //       OpenAI-compat shim doesn't translate them, so Pi sees no
+    //       tool_calls. "Try again with a clearer description" is
+    //       misleading — only switching to a tool-capable model helps.
+    //
+    //   (b) Genuine "agent ran but didn't decide to create features" —
+    //       e.g. user only said "hi" with no spec to base the backlog on.
+    //       Here a clearer description IS the right answer.
+    const isConfabulation =
+      toolCalls.length === 0 && finalAssistantText.trim().length > 0;
+    const errorMessage = isConfabulation
+      ? `Your model (${effective.model} via ${effective.provider}) replied without invoking any structured tool calls — the agent can't write features when the model emits tool calls as plain text instead of structured \`tool_calls\`. This is a known limitation of reasoning-style and small-parameter Ollama models (gemma3:*, deepseek-r1:*, llama3.2:*). Switch to a tool-capable model in Settings (gpt-oss:20b, qwen2.5-coder:32b, llama3.1:8b) and try again, or use the bypass script: \`node scripts/load-example-features.mjs ${project.id} --spec docs/<your-spec>.json\`.`
+      : "The agent finished without creating any features. Try again with a clearer description, or load a hand-authored backlog with `node scripts/load-example-features.mjs <projectId> --spec docs/<your-spec>.json`.";
     return NextResponse.json(
       {
-        error:
-          "The agent finished without creating any features. Try again with a clearer description.",
+        error: errorMessage,
+        kind: isConfabulation ? "confabulation" : "no-features",
         toolCalls: toolCalls.length,
         turns,
         summary: finalAssistantText.slice(0, 500),
+        model: effective.model,
+        provider: effective.provider,
       },
       { status: 502 },
     );
@@ -208,5 +229,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     projectId: project.id,
     toolCalls: toolCalls.length,
     summary: finalAssistantText.slice(0, 500),
+    model: effective.model,
+    provider: effective.provider,
   });
 }
