@@ -1,19 +1,27 @@
 #!/usr/bin/env node
-// Load the DreamForgeIdeas example backlog into a project via the running
-// LocalForge HTTP API. This goes through the same code path as the UI, so
-// timestamps, validation, and dependency FK constraints all behave exactly
-// as they would for a manually-created feature.
+// Load a hand-authored backlog into a project via the running LocalForge
+// HTTP API. This goes through the same code path as the UI, so timestamps,
+// validation, and dependency FK constraints all behave exactly as they
+// would for a manually-created feature.
 //
 // Usage:
-//   node scripts/load-example-features.mjs <projectId> [baseUrl]
+//   node scripts/load-example-features.mjs <projectId> [--spec <path>] [--base-url <url>]
+//   node scripts/load-example-features.mjs <projectId> [specPath] [baseUrl]   (legacy positional form)
 //
-// Example (DreamForgeIdeas at project id 2, default port 7777):
+// Examples:
+//   # Default DreamForgeIdeas backlog at project id 2:
 //   node scripts/load-example-features.mjs 2
+//
+//   # Author Landing fallback when the AI Bootstrapper failed:
+//   node scripts/load-example-features.mjs 3 --spec docs/author-landing-features.json
+//
+//   # Custom backlog against a non-default port:
+//   node scripts/load-example-features.mjs 4 --spec docs/my-spec.json --base-url http://localhost:3737
 //
 // Prerequisites:
 //   - LocalForge dev server running (npm run dev)
 //   - The target project already exists in LocalForge
-//   - docs/example-app-features.json present (committed in this repo)
+//   - The spec JSON file exists; default is docs/example-app-features.json
 
 import fs from "node:fs";
 import path from "node:path";
@@ -22,23 +30,93 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const projectIdArg = process.argv[2];
-const baseUrl = process.argv[3] ?? "http://localhost:7777";
+const DEFAULT_SPEC = path.resolve(
+  __dirname,
+  "..",
+  "docs",
+  "example-app-features.json",
+);
+const DEFAULT_BASE_URL = "http://localhost:7777";
 
+function parseArgs(argv) {
+  const out = { positional: [], spec: null, baseUrl: null };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--spec" || a === "-s") {
+      out.spec = argv[++i];
+    } else if (a === "--base-url" || a === "-b") {
+      out.baseUrl = argv[++i];
+    } else if (a.startsWith("--spec=")) {
+      out.spec = a.slice("--spec=".length);
+    } else if (a.startsWith("--base-url=")) {
+      out.baseUrl = a.slice("--base-url=".length);
+    } else if (a === "--help" || a === "-h") {
+      out.help = true;
+    } else {
+      out.positional.push(a);
+    }
+  }
+  return out;
+}
+
+const args = parseArgs(process.argv.slice(2));
+
+if (args.help) {
+  console.log(
+    "usage: node scripts/load-example-features.mjs <projectId> [--spec <path>] [--base-url <url>]",
+  );
+  process.exit(0);
+}
+
+const projectIdArg = args.positional[0];
 if (!projectIdArg || !/^[0-9]+$/.test(projectIdArg)) {
-  console.error("usage: node scripts/load-example-features.mjs <projectId> [baseUrl]");
+  console.error(
+    "usage: node scripts/load-example-features.mjs <projectId> [--spec <path>] [--base-url <url>]",
+  );
   process.exit(2);
 }
 const projectId = Number.parseInt(projectIdArg, 10);
 
-const jsonPath = path.resolve(__dirname, "..", "docs", "example-app-features.json");
-const raw = fs.readFileSync(jsonPath, "utf8");
-const spec = JSON.parse(raw);
+// Backward compatibility: the original interface accepted positional args
+// as `<projectId> [specPath] [baseUrl]` (when specPath was just a baseUrl
+// it was actually parsed as baseUrl since `docs/...json` doesn't start with
+// http). To keep the existing DreamForgeIdeas docs accurate we still accept
+// the second-positional form, but flags take precedence.
+let specPath = args.spec;
+let baseUrl = args.baseUrl;
+if (!specPath && args.positional[1] && /\.json$/i.test(args.positional[1])) {
+  specPath = args.positional[1];
+}
+if (!baseUrl) {
+  // Old positional form: `<projectId> [baseUrl]` — second positional is a
+  // URL, not a JSON path.
+  const positionalUrl = args.positional.find((p) => /^https?:\/\//i.test(p));
+  baseUrl = positionalUrl ?? DEFAULT_BASE_URL;
+}
+specPath = specPath ? path.resolve(specPath) : DEFAULT_SPEC;
 
-if (!Array.isArray(spec.features) || spec.features.length === 0) {
-  console.error(`no features found in ${jsonPath}`);
+let raw;
+try {
+  raw = fs.readFileSync(specPath, "utf8");
+} catch (err) {
+  console.error(`could not read spec at ${specPath}: ${err.message}`);
   process.exit(1);
 }
+let spec;
+try {
+  spec = JSON.parse(raw);
+} catch (err) {
+  console.error(`spec at ${specPath} is not valid JSON: ${err.message}`);
+  process.exit(1);
+}
+
+if (!Array.isArray(spec.features) || spec.features.length === 0) {
+  console.error(`no features found in ${specPath}`);
+  process.exit(1);
+}
+
+console.log(`loading spec from ${path.relative(process.cwd(), specPath)}`);
+console.log(`target: ${baseUrl}, project ${projectId}`);
 
 async function postJson(url, body) {
   const res = await fetch(url, {

@@ -1,0 +1,77 @@
+{
+  "_comment": "Hand-authored Author Landing backlog. Loaded via scripts/load-example-features.mjs as a fallback when the AI Bootstrapper's tool-calling path fails — see docs/author-landing-app-requirements.md for the full spec and the screenshot trail. Same prescriptive style as docs/example-app-features.json: each description names the exact files / bash commands the agent must execute, so smaller models that tend to read-but-not-write get a clear nudge toward actual implementation.",
+  "features": [
+    {
+      "key": "scaffold",
+      "title": "Scaffold Next.js app",
+      "category": "functional",
+      "description": "ACTION: scaffold a Next.js 16 App Router project IN THE CURRENT WORKING DIRECTORY (your shell cwd IS the project root — do NOT cd elsewhere, do NOT use absolute paths).\n\nSTEPS YOU MUST EXECUTE:\n1. Run `npx create-next-app@latest . --typescript --tailwind --use-npm --yes --skip-install` via Bash. The `.` makes it scaffold INTO cwd. If it complains the directory is not empty, mv any conflicting hidden folders aside, then retry.\n2. Run `npm install` via Bash to install dependencies.\n3. Use Read on `package.json` to verify `next`, `react`, `react-dom`, `tailwindcss` are listed.\n\nDo NOT just plan or describe — EXECUTE the bash commands. The session is incomplete unless `package.json` and `app/` exist on disk afterwards.",
+      "acceptanceCriteria": "- package.json lists next, react, react-dom, tailwindcss\n- app/page.tsx and app/layout.tsx exist\n- node_modules/ exists (npm install ran)\n- npm run dev would listen on http://localhost:3000",
+      "priority": 1,
+      "dependsOn": []
+    },
+    {
+      "key": "db-setup",
+      "title": "Add SQLite and Drizzle ORM",
+      "category": "functional",
+      "description": "ACTION: add SQLite + Drizzle ORM to the existing Next.js scaffold.\n\nFILES YOU MUST CREATE OR MODIFY (use Write/Edit):\n- `lib/db.ts` — exports a Drizzle `db` instance backed by better-sqlite3, opening `data.sqlite` in the project root. Suggested content:\n  ```ts\n  import Database from 'better-sqlite3';\n  import { drizzle } from 'drizzle-orm/better-sqlite3';\n  const sqlite = new Database('data.sqlite');\n  export const db = drizzle(sqlite);\n  ```\n- `drizzle.config.ts` — points at `./lib/schema.ts` (created in the next feature) and outputs to `./drizzle`. Suggested content:\n  ```ts\n  import type { Config } from 'drizzle-kit';\n  export default { schema: './lib/schema.ts', out: './drizzle', dialect: 'sqlite', dbCredentials: { url: './data.sqlite' } } satisfies Config;\n  ```\n\nBASH COMMAND YOU MUST RUN:\n- `npm install better-sqlite3 drizzle-orm` and `npm install -D drizzle-kit @types/better-sqlite3`.\n\nThe session is incomplete unless lib/db.ts AND drizzle.config.ts exist on disk and node_modules/better-sqlite3 exists.",
+      "acceptanceCriteria": "- lib/db.ts exists and exports a `db` Drizzle instance\n- drizzle.config.ts exists and references ./lib/schema.ts and ./drizzle\n- package.json now lists better-sqlite3, drizzle-orm, drizzle-kit, @types/better-sqlite3\n- node_modules/better-sqlite3 exists",
+      "priority": 2,
+      "dependsOn": ["scaffold"]
+    },
+    {
+      "key": "schema",
+      "title": "Define subscribers schema and migrate",
+      "category": "functional",
+      "description": "ACTION: define the `subscribers` table schema and run the initial migration.\n\nFILE YOU MUST CREATE (use Write):\n- `lib/schema.ts` — defines the `subscribers` table:\n  ```ts\n  import { sqliteTable, integer, text } from 'drizzle-orm/sqlite-core';\n  import { sql } from 'drizzle-orm';\n  export const subscribers = sqliteTable('subscribers', {\n    id: integer('id').primaryKey({ autoIncrement: true }),\n    email: text('email').notNull().unique(),\n    createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),\n  });\n  ```\n\nBASH COMMANDS YOU MUST RUN:\n- `npx drizzle-kit generate` — produces a SQL migration in ./drizzle/.\n- `npx drizzle-kit migrate` — applies it, creating data.sqlite.\n\nThe session is incomplete unless lib/schema.ts exists, ./drizzle/ contains a *.sql migration file, and data.sqlite exists at the project root.",
+      "acceptanceCriteria": "- lib/schema.ts exists with the subscribers table (id, email UNIQUE, createdAt)\n- ./drizzle/ contains at least one .sql migration file\n- data.sqlite exists at the project root\n- A no-op `npx drizzle-kit generate` afterwards reports no schema changes",
+      "priority": 3,
+      "dependsOn": ["db-setup"]
+    },
+    {
+      "key": "subscribe-api",
+      "title": "Subscribe API",
+      "category": "functional",
+      "description": "ACTION: add the POST API for newsletter signups.\n\nFILE YOU MUST CREATE (use Write):\n- `app/api/subscribe/route.ts` — exports `POST(request)`:\n  - Parse the JSON body. Validate `email` is a string matching `/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/`. Return 400 with `{ error: 'invalid email' }` on bad input.\n  - Insert via `db.insert(subscribers).values({ email }).onConflictDoNothing().run()` so duplicate signups silently succeed.\n  - Return `{ ok: true }` on success.\n\nImports: `NextResponse` from 'next/server', `db` from '@/lib/db', `subscribers` from '@/lib/schema'.\n\nThe session is incomplete unless app/api/subscribe/route.ts exists on disk.",
+      "acceptanceCriteria": "- app/api/subscribe/route.ts exists and exports POST\n- POST /api/subscribe with {\"email\":\"x@y.com\"} returns 200 with { ok: true }\n- POST without an email field returns 400\n- POST with an obviously-bad string (e.g. \"foo\") returns 400\n- Posting the same email twice does not 500 and creates only one row",
+      "priority": 4,
+      "dependsOn": ["schema"]
+    },
+    {
+      "key": "hero",
+      "title": "Hero section with title and tagline",
+      "category": "functional",
+      "description": "ACTION: render the page hero in `app/page.tsx`.\n\nFILE YOU MUST EDIT (use Write/Edit):\n- `app/page.tsx` — replace the default Next.js scaffold with a centered hero block containing:\n  - The book title `Harrowfield` rendered as a large all-caps serif heading (Tailwind: `text-5xl md:text-7xl font-serif tracking-wide uppercase`).\n  - The tagline `What happened in the room below…` underneath in italic muted text (Tailwind: `italic text-lg md:text-xl text-stone-500 mt-2`).\n  - Wrapper centred with vertical padding (Tailwind: `min-h-screen flex flex-col items-center justify-start py-20 px-6`).\n\nKeep this feature visual-only — no buttons, no fetch, no state.\n\nThe session is incomplete unless app/page.tsx is updated AND `Harrowfield` is the largest text rendered.",
+      "acceptanceCriteria": "- app/page.tsx renders `Harrowfield` as the largest text on the page\n- The tagline appears directly under the title in italic\n- Layout is centred horizontally with breathing room left/right\n- npm run dev still serves the page without runtime errors",
+      "priority": 5,
+      "dependsOn": ["subscribe-api"]
+    },
+    {
+      "key": "author-block",
+      "title": "Author photo and bio block",
+      "category": "functional",
+      "description": "ACTION: add a two-column author block under the hero.\n\nFILES YOU MUST CREATE OR EDIT:\n- `public/author.jpg` — write a tiny placeholder JPEG (you can copy any small image; the user will swap their own photo in later). If you do not have an image to copy, write a 1x1 grey placeholder PNG to `public/author.png` instead and reference that file.\n- `app/page.tsx` — under the hero, add a section with `flex flex-col sm:flex-row items-center gap-8 max-w-3xl mx-auto`. Left side: the photo wrapped in `rounded-2xl overflow-hidden w-72 h-72 shrink-0` with `next/image` loaded from the public file. Right side: a one-paragraph author bio (placeholder text is fine — `An archivist of vanished places. Lives in the Cotswolds with too many cats and one stubborn typewriter.` or similar) styled `font-serif text-stone-700 leading-relaxed`.\n\nThe session is incomplete unless the photo is rendered alongside the bio paragraph.",
+      "acceptanceCriteria": "- A photo and bio are visible directly below the hero\n- They sit side-by-side on viewports >= 640px and stack vertically below 640px\n- Bio is in a serif font matching the title family\n- The photo file exists in public/ and is referenced via next/image",
+      "priority": 6,
+      "dependsOn": ["hero"]
+    },
+    {
+      "key": "excerpt",
+      "title": "Excerpt section with fade-out",
+      "category": "style",
+      "description": "ACTION: add the book excerpt under the author block, with a CSS mask gradient that fades the bottom of the paragraph into the page background.\n\nFILE YOU MUST EDIT (use Write/Edit):\n- `app/page.tsx` — under the author block, add a `<section>` containing one `<p>` with the full excerpt text:\n  > When archivist Maren Calloway is hired to catalogue the private collection of a decommissioned Victorian asylum in the English Cotswolds, she expects damp boxes and fading paperwork. But the archive doesn't cooperate. Patient journals don't match official records. Architectural drawings show rooms with no doors. And the deeper she digs, the more the building responds. A gothic horror novel about institutional amnesia, the architecture of forgetting, and seven patients who vanished from the record but never left the stone.\n  Wrap it in `max-w-2xl mx-auto px-6 my-16 font-serif text-lg leading-relaxed text-stone-800` and apply a Tailwind arbitrary-value mask: `[mask-image:linear-gradient(to_bottom,black_70%,transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black_70%,transparent)]`.\n\nThe session is incomplete unless the excerpt visibly fades at the bottom in a browser.",
+      "acceptanceCriteria": "- The excerpt is one continuous paragraph in a serif font\n- The bottom ~120px visibly fade to the page background\n- The text content matches the spec exactly (Maren Calloway, Cotswolds, seven patients...)\n- The fade is applied via mask-image (or -webkit-mask-image), not a separate <div> overlay",
+      "priority": 7,
+      "dependsOn": ["author-block"]
+    },
+    {
+      "key": "signup-form",
+      "title": "Newsletter signup form",
+      "category": "functional",
+      "description": "ACTION: add a centred newsletter signup form under the excerpt that POSTs to /api/subscribe.\n\nFILE YOU MUST CREATE (use Write):\n- `app/components/SignupForm.tsx` — a client component (`'use client'`) with:\n  - State: `email`, `status` (`'idle' | 'submitting' | 'ok' | 'error'`), `errorMsg`.\n  - On submit: regex-validate the email locally first; if it fails, set `status='error'` and `errorMsg='Please enter a valid email address.'` without firing fetch.\n  - Otherwise POST to `/api/subscribe` with `{ email }`. On 200 set `status='ok'`. On 400+ set `status='error'` with the server's error text or a fallback.\n  - Render: a heading `Subscribe to learn more`, a `<form>` with email input + Subscribe button (disabled while submitting), and replace the form with a thank-you message when `status==='ok'`. Show `errorMsg` inline when `status==='error'`.\n\nThen edit `app/page.tsx` to render `<SignupForm />` under the excerpt section.\n\nThe session is incomplete unless app/components/SignupForm.tsx exists AND app/page.tsx imports it.",
+      "acceptanceCriteria": "- Submitting a valid email shows a thank-you confirmation in the same place the form was\n- Submitting an invalid email shows an inline validation error and does not fire the network request\n- Submitting an already-subscribed email shows the same thank-you (no leak about prior signup)\n- A row exists in the subscribers SQLite table after a successful submit",
+      "priority": 8,
+      "dependsOn": ["subscribe-api", "excerpt"]
+    }
+  ]
+}
