@@ -63,7 +63,8 @@ function ForgeShellInner({ children }: { children: React.ReactNode }) {
 
   const { toggleTheme } = useTheme();
   const { openNewProjectDialog, projects } = useShell();
-  const { activeProject, isRunning, requestRefresh } = useActiveProject();
+  const { activeProject, isRunning, requestRefresh, refreshTick } =
+    useActiveProject();
 
   const getActiveProjectId = React.useCallback(() => {
     if (activeProject) return activeProject.id;
@@ -104,7 +105,6 @@ function ForgeShellInner({ children }: { children: React.ReactNode }) {
     model: string;
     provider: string;
   } | null>(null);
-  const refreshTick = useActiveProject().refreshTick;
   React.useEffect(() => {
     if (!activeProject) return;
     let cancelled = false;
