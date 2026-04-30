@@ -1200,12 +1200,23 @@ the safety check; it only saves wall time on the rejection path too.
 
 ## BUG-005 — No Cancel button while the AI Bootstrapper is generating
 
-**Status:** OPEN (observed live 2026-04-30 on the Author Landing
-project with `gpt-oss:20b` running CPU-spilled — generation took >5
-min and the user had no in-app way to abort)
+**Status:** FIXED — pending live verification (2026-04-30)
 **Reported:** 2026-04-30
 **Severity:** Medium (UX — user trust; a hung "Generating…" with no
 Cancel feels broken even when the runner is actually still working)
+
+### Fix
+
+`components/bootstrapper/bootstrapper-panel.tsx` now wires an
+AbortController into the `fetch` call and renders a Cancel button +
+elapsed-seconds counter in place of the disabled "Generating…"
+button while the request is in flight. Clicking Cancel calls
+`controller.abort()`, which fires the existing `req.signal` chain on
+the server (`req.signal → piSession.abort()` already exists in
+`generate-features/route.ts:162`). The catch block distinguishes
+DOMException AbortError from real failures so the user sees a
+neutral "Cancelled — no features were created." in the genResult
+banner instead of a destructive-tone error.
 
 ### Symptom
 

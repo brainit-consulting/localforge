@@ -53,6 +53,12 @@ export function BootstrapperPanel({
   const [input, setInput] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
+  // BUG-005: hold the in-flight feature-generation AbortController so the
+  // user can cancel mid-run. `req.signal` on the server already aborts
+  // piSession.abort() — wiring the fetch up to a controller exposes that
+  // path to the UI.
+  const generateAbortRef = React.useRef<AbortController | null>(null);
+  const [generateElapsed, setGenerateElapsed] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
   const [genResult, setGenResult] = React.useState<string | null>(null);
   const [endConfirmOpen, setEndConfirmOpen] = React.useState(false);
@@ -203,15 +209,34 @@ export function BootstrapperPanel({
    * navigate the user to the kanban (which now has features) by refreshing
    * the router.
    */
+  function handleCancelGenerate() {
+    const ctrl = generateAbortRef.current;
+    if (!ctrl) return;
+    // The fetch's signal triggers req.signal on the server, which already
+    // chains into piSession.abort() in the route. Don't clear `generating`
+    // here — the catch block does it once the fetch promise rejects, so
+    // the spinner stays visible during the brief tear-down window.
+    ctrl.abort();
+  }
+
   async function handleGenerate() {
     if (generating) return;
+    const controller = new AbortController();
+    generateAbortRef.current = controller;
     setGenerating(true);
+    setGenerateElapsed(0);
     setError(null);
     setGenResult(null);
+    // Tick a "Xs elapsed" counter next to the spinner so users on slow
+    // models (CPU-spilled gpt-oss:20b) can see the run is alive.
+    const startedAt = Date.now();
+    const elapsedTimer = setInterval(() => {
+      setGenerateElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
     try {
       const res = await fetch(
         `/api/agent-sessions/${sessionId}/generate-features`,
-        { method: "POST" },
+        { method: "POST", signal: controller.signal },
       );
       const data = (await res.json().catch(() => ({}))) as {
         count?: number;
@@ -238,10 +263,21 @@ export function BootstrapperPanel({
       // project page swaps from chat → kanban.
       setTimeout(() => router.refresh(), 700);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to generate features",
-      );
+      // Distinguish a user-initiated abort from real failure so the user
+      // doesn't see a destructive-tone error after clicking Cancel.
+      if (
+        err instanceof DOMException &&
+        err.name === "AbortError"
+      ) {
+        setGenResult("Cancelled — no features were created.");
+      } else {
+        setError(
+          err instanceof Error ? err.message : "Failed to generate features",
+        );
+      }
     } finally {
+      clearInterval(elapsedTimer);
+      generateAbortRef.current = null;
       setGenerating(false);
     }
   }
@@ -322,22 +358,39 @@ export function BootstrapperPanel({
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             End conversation
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleGenerate}
-            disabled={!canGenerate}
-            data-testid="bootstrapper-generate"
-            className="gap-1"
-          >
-            {generating ? (
+          {generating ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleCancelGenerate}
+              data-testid="bootstrapper-generate-cancel"
+              className="gap-1"
+              aria-label="Cancel feature generation"
+            >
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
+              <span>Cancel</span>
+              <span
+                className="ml-1 font-mono text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                {generateElapsed}s
+              </span>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleGenerate}
+              disabled={!canGenerate}
+              data-testid="bootstrapper-generate"
+              className="gap-1"
+            >
               <Wand2 className="h-4 w-4" aria-hidden="true" />
-            )}
-            {generating ? "Generating…" : "Generate feature list"}
-          </Button>
+              Generate feature list
+            </Button>
+          )}
         </div>
       </div>
 
