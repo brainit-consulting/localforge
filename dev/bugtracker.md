@@ -1198,6 +1198,71 @@ the safety check; it only saves wall time on the rejection path too.
 
 ---
 
+## BUG-005 — No Cancel button while the AI Bootstrapper is generating
+
+**Status:** OPEN (observed live 2026-04-30 on the Author Landing
+project with `gpt-oss:20b` running CPU-spilled — generation took >5
+min and the user had no in-app way to abort)
+**Reported:** 2026-04-30
+**Severity:** Medium (UX — user trust; a hung "Generating…" with no
+Cancel feels broken even when the runner is actually still working)
+
+### Symptom
+
+Once the user clicks "Generate feature list" in the bootstrapper
+panel, the button disables and shows a spinner. There is no Cancel
+button. If the model is slow (e.g. CPU-spilled `gpt-oss:20b` running
+at 3-10 tok/s), the spinner can sit for 5-10 minutes before either
+finishing or hitting the 600s `maxDuration`. The user's only options
+are:
+
+- Refresh the page (works — the fetch's `req.signal` is wired to
+  `piSession.abort()` in `app/api/agent-sessions/[id]/generate-features/route.ts:162-164`).
+- Close the tab (works — same path).
+- Wait for `maxDuration` to expire server-side.
+
+None of those are obvious from the UI, and refresh/close-tab also
+discard whatever in-progress agent state Pi might have produced.
+
+### Proposed fix
+
+Add an in-panel Cancel button that fires while `generating === true`:
+
+1. `bootstrapper-panel.tsx`: add an `AbortController` ref alongside
+   the existing `generating` state. Pass `controller.signal` into
+   the `fetch(..., { signal })` call.
+2. Render a Cancel button next to the spinner — calls
+   `controller.abort()`, which triggers the existing `req.signal`
+   handler on the server and aborts the Pi session cleanly.
+3. After a successful abort, surface a neutral toast ("Cancelled —
+   no features were created") rather than the destructive-tone error
+   banner.
+
+Optional: also surface "elapsed time" next to the spinner so the user
+has a sense of progress on slow models. The model's name + whether
+it's CPU-spilled are already known in scope (the topbar badge + the
+hardware panel).
+
+### Files that would change
+
+- `components/bootstrapper/bootstrapper-panel.tsx`
+
+### Manual test plan
+
+1. Configure the project with a slow model (e.g. CPU-spilled
+   `gpt-oss:20b` or any model that takes >2 min to produce 8 tool
+   calls).
+2. Click "Generate feature list".
+3. **Expect:** spinner + Cancel button visible.
+4. After ~30s click Cancel.
+5. **Expect:** server logs `[generate-features] agent failed: ...`
+   from the AbortError path, the panel returns to the idle state, no
+   features land in the project, and a neutral toast confirms.
+6. Click Generate again with a fast model. **Expect:** completes as
+   normal, no leftover abort state.
+
+---
+
 ## Verification checklist (before opening PR to leonvanzyl/localforge)
 
 - [x] BUG-001: gemma3:4b stops retrying after one failure with guidance message
